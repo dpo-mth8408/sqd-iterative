@@ -15,7 +15,6 @@ format:
             \usepackage{eulervm}
             \usepackage{xspace}
             \usepackage[francais]{babel}
-    mainfont: Palatino
     geometry:
       - margin=1in
     papersize: letter
@@ -70,7 +69,7 @@ Dans cette question, on demande d'implémenter la méthode BFGS pour résoudre l
 
 Votre implémentation doit avoir les mêmes caractéristiques qu'à la question 1.
 
-Ici, on cherche notamment à valider le résultat disant que la méthode se termine en au plus $n$ itérations (en arithmétique exacte).
+Ici, on cherche notamment à valider le résultat disant que la méthode se termine en au plus $n$ itérations (en arithmétique exacte) et reconstruit $H$, c'est-à-dire que $B_k = H$ à la convergence.
 
 Tester votre implémentation sur les problèmes quadratiques de la section *Problèmes test* ci-dessous.
 
