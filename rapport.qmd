@@ -2,8 +2,8 @@
 title: "Rapport de laboratoire 2"
 subtitle: "MTH8408"
 author:
-  - name: Votre nom
-    email: votre.adresse@polymtl.ca
+  - name: Nicolas Jouglet
+    email: nicolas.jouglet@polymtl.ca
     affiliation:
       - name: Polytechnique Montréal
 format:
@@ -27,7 +27,9 @@ engine: julia
 #| output: false
 using Pkg
 Pkg.activate("labo2_env")
+Pkg.add("Printf")
 using LinearAlgebra
+using Printf
 ```
 
 # Contexte
@@ -59,10 +61,82 @@ Votre implémentation doit avoir les caractéristiques suivantes :
 Tester votre implémentation sur les problèmes quadratiques de la section *Problèmes test* ci-dessous.
 
 ```{julia}
+
 function steepest_qp(g, H, eps_a=1.0e-5, eps_r=1.0e-5)
-  # votre code ici
+"""
+    steepest_qp(g, H[, eps_a=1.0e-5, eps_r=1.0e-5])
+
+Résout un problème quadratique de la forme :
+
+    min_x g'x + (1/2)x'Hx
+
+en utilisant la méthode de descente du plus fort gradient (steepest descent).
+
+# Arguments
+- g::Vector{Float64}` : Le vecteur des coefficients linéaires.
+- H::Matrix{Float64}` : La matrice de Hessienne (supposée symétrique définie positive).
+- eps_a::Float64=1.0e-5` : Tolérance absolue pour le critère d'arrêt.
+- eps_r::Float64=1.0e-5` : Tolérance relative pour le critère d'arrêt.
+
+# Retourne
+- x::Vector{Float64}` : Le vecteur minimiseur approché.
+- k::Int` : Le nombre d’itérations effectuées.
+
+# Détails
+La direction de descente est donnée par `-gk` (le gradient courant), et le pas `alpha` est calculé par une règle analytique optimale pour les problèmes quadratiques : `alpha = (d'd)/(d'Hd)`.
+
+La fonction s'arrête lorsque la norme du gradient est inférieure à `eps_a + eps_r * ||g₀||`, ou après `50n` itérations.
+"""
+
+    n = length(g)
+    x = zeros(n)
+    k = 0
+    gk = g + H * x
+    gnorm0=norm(gk)
+
+    max_iter = 50n
+    if max_iter ≤ 100
+    print_every = 10
+elseif max_iter ≤ 500
+    print_every = 25
+elseif max_iter ≤ 1000
+    print_every = 50
+else
+    print_every = 100
 end
+
+    @printf("| %3s | %13s | %12s | %12s |\n", "k", "||gk||", "alpha", "f(x)")
+    @printf("|%s|\n", "-"^53)
+
+    while norm(gk) > eps_a + eps_r * gnorm0
+        d = -gk
+
+        alpha = dot(d, d) / dot(d, H*d)
+        x .+= alpha * d
+        Hx=H*x
+
+        f = dot(g, x) + 0.5 * dot(x, Hx)
+
+        if k % print_every == 0
+            @printf("| %3d | %13.6e | %12.6e | %12.6e |\n", k, norm(gk), alpha, f)
+        end
+
+        gk = g + Hx
+        k += 1
+
+        if k > 10n
+            println("Arrêt : trop d'itérations")
+            break
+        end
+    end
+        
+    print("k = ", k, "; x = ",x )
+
+    return  k,x
+end
+
 ```
+
 
 # Question 2
 
@@ -76,8 +150,62 @@ Tester votre implémentation sur les problèmes quadratiques de la section *Prob
 
 ```{julia}
 function bfgs_qp(g, H, eps_a=1.0e-5, eps_r=1.0e-5)
-  # votre code ici
+   """
+    bfgs_qp(g, H[, eps_a=1.0e-5, eps_r=1.0e-5])
+
+Résout le problème quadratique `min_x g'x + 0.5 x'Hx` avec l'algorithme quasi-Newton BFGS.
+
+# Arguments
+- `g::Vector{Float64}` : Vecteur du terme linéaire.
+- `H::Matrix{Float64}` : Matrice de Hessienne (supposée SPD).
+- `eps_a::Float64=1.0e-5` : Tolérance absolue.
+- `eps_r::Float64=1.0e-5` : Tolérance relative.
+
+# Retourne
+- `x` : Vecteur solution.
+- `k` : Nombre d’itérations.
+"""
+
+    n = length(g)
+    x = zeros(n)
+    gk = g + H * x
+    gnorm0= norm(gk)
+    @printf("| %3s | %13s | %12s | %12s |\n", "k", "||gk||", "alpha", "f(x)")
+    @printf("|%s|\n", "-"^53)
+    k = 0
+    Hk=I(n)
+
+    while norm(gk) > eps_a + eps_r * gnorm0
+
+        gk= g + H * x
+        d = -Hk * gk
+        
+        alpha = -(gk' * d) / (d' * H * d)
+  
+        x .+= alpha * d
+        Hx=H*x
+        
+        f = dot(g, x) + 0.5 * dot(x, Hx)
+
+        gkp1=g+Hx
+        yk = gkp1 - gk
+        sk=alpha*d
+        rho = 1.0 / dot(yk, sk)
+
+        Hk=(I(n)-rho*sk*yk')*Hk*(I(n)-rho*yk*sk')+rho*sk*sk'
+        
+        @printf("| %3d | %13.6e | %12.6e | %12.6e |\n", k, norm(gk), alpha, f)
+
+        k += 1
+        if k > 2n
+            println("Arrêt : trop d'itérations")
+            break
+        end
+    end
+    print(" k = ", k, "; x = ", x)
+    return k, x
 end
+
 ```
 
 # Résultats numériques
@@ -88,8 +216,23 @@ Votre premier problème test sera généré aléatoirement avec $n = 10$.
 
 ```{julia}
 n = 10
-# g_rand = ...
-# H_rand = ...
+using Random
+
+# Vecteur gradient aléatoire
+g_rand = randn(n)
+
+# Matrice symétrique définie positive
+A = randn(n, n)
+H_rand = A' * A + 1e-3 * I #pour que la matrice soit sym déf pos
+
+
+# Affichage
+println("g_rand = ", g_rand)
+println("H_rand = ", H_rand)
+
+steepest_qp(g_rand,H_rand)
+bfgs_qp(g_rand, H_rand)
+
 ```
 
 Utiliser ensuite les problèmes quadratiques convexes de la collection Maros et Meszaros.
@@ -127,8 +270,15 @@ Choisissez 3 problèmes :
 * un avec $n \approx 100$.
 
 ```{julia}
-g100, H100 = get_gH("CVXQP1_S.SIF")
+g9, H9 = get_gH("dualc1.SIF")
+
+g79, H79 = get_gH("qshare2b.SIF", 1.0e-3)
+
+g140, H140 = get_gH("qscagr7.SIF", 1.0e-3)
+
 ```
+
+
 
 Attention :
 
@@ -142,11 +292,18 @@ g, H = get_gH(name, 1.0e-3)
 ## Validation de la méthode de la plus forte pente
 
 ```{julia}
-# votre code ici
+
+steepest_qp(g9,H9)
+steepest_qp(g79,H79) 
+steepest_qp(g140,H140)
+
 ```
+
 
 ## Validation de la méthode BFGS
 
 ```{julia}
-# votre code ici
+bfgs_qp(g9,H9)
+bfgs_qp(g79,H79) 
+bfgs_qp(g140,H140)
 ```
