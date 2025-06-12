@@ -2,8 +2,8 @@
 title: "Rapport de laboratoire 2"
 subtitle: "MTH8408"
 author:
-  - name: Votre nom
-    email: votre.adresse@polymtl.ca
+  - name: Esse Dawut
+    email: dawut.esse@polymtl.ca
     affiliation:
       - name: Polytechnique Montréal
 format:
@@ -28,6 +28,10 @@ engine: julia
 using Pkg
 Pkg.activate("labo2_env")
 using LinearAlgebra
+using Random
+using Printf
+Pkg.add("PrettyTables")
+using PrettyTables: pretty_table, ft_printf
 ```
 
 # Contexte
@@ -59,8 +63,38 @@ Votre implémentation doit avoir les caractéristiques suivantes :
 Tester votre implémentation sur les problèmes quadratiques de la section *Problèmes test* ci-dessous.
 
 ```{julia}
-function steepest_qp(g, H, eps_a=1.0e-5, eps_r=1.0e-5)
-  # votre code ici
+function steepest_qp(g, H; eps_a = 1e-5, eps_r = 1e-5,
+                     max_iter = length(g))
+    n        = length(g)
+    x        = zeros(eltype(g), n)        # x₀ = 0
+    r        = g + H*x                    # gradient
+    r0       = norm(r)
+    tol      = eps_a + eps_r * r0
+    q        = 0.0
+
+    @printf("%4s  %12s  %12s\n", "k", "‖∇q(x)‖", "q(x)")
+    @printf("%4d  %12.4e  %12.4e\n", 0, r0, q)
+
+    for k in 1:max_iter
+        p  = -r
+        Hp = H * p                        # unique produit H p
+        α  = dot(r, r) / dot(p, Hp)       # pas exact
+        x .+= α * p
+
+        # mise‑à‑jour « gratuite » de q(x)
+        q += 0.5 * α * dot(r, p)
+
+        # gradient au nouvel x : r ← r + α H p
+        r .+= α * Hp
+        rnorm = norm(r)
+
+        @printf("%4d  %12.4e  %12.4e\n", k, rnorm, q)
+
+        if rnorm ≤ tol
+            return x, k, q
+        end
+    end
+    return x, max_iter, q
 end
 ```
 
@@ -75,8 +109,51 @@ Ici, on cherche notamment à valider le résultat disant que la méthode se term
 Tester votre implémentation sur les problèmes quadratiques de la section *Problèmes test* ci-dessous.
 
 ```{julia}
-function bfgs_qp(g, H, eps_a=1.0e-5, eps_r=1.0e-5)
-  # votre code ici
+function bfgs_qp(g, H; eps_a = 1e-5, eps_r = 1e-5, max_iter = length(g))
+    n    = length(g)                     # dimension
+    x    = zeros(eltype(g), n)           # x₀ = 0
+    r    = g + H*x                       # gradient ∇q(x₀)
+    r0   = norm(r)                       # norme initiale   
+    tol  = eps_a + eps_r * r0            # seuil d’arrêt
+    q    = 0.0                           # q(x₀) = 0 (car x₀ = 0)
+    B    = Matrix{eltype(g)}(I, n, n)    # B₀ = I  (approx. H⁻¹)
+
+    @printf("%4s  %12s  %13s\n", "k", "‖∇q(x)‖", "q(x)")
+    @printf("%4d  %12.4e  %13.6e\n", 0, r0, q)
+
+    for k in 1:max_iter
+        p  = -B \ r                      # solve  B p = -r   (O(n²))
+        Hp = H * p                       # unique produit H p 
+        α  = -(r' * p) / (p' * Hp)       # pas exact
+
+        s  = α * p                       # déplacement
+        x .+= s
+        q += 0.5 * α * (r' * p)          # q_{k+1} = q_k + ½ α rᵀp
+
+        r_new = r + α * Hp               # r_{k+1} = r_k + α H p
+        y     = r_new - r                # = α H p
+        sy    = dot(s, y)                # sᵀy  (doit être > 0)
+
+        # test de petite courbure
+        if sy ≤ 1e-12
+            r = r_new
+            break
+        end
+
+        # mise à jour BFGS
+        Bs = B * s
+        B .+= (y*y') / sy - (Bs*Bs') / dot(s, Bs)
+
+        r = r_new
+        rnorm = norm(r)
+        @printf("%4d  %12.4e  %13.6e\n", k, rnorm, q)
+
+        # critère d’arrêt explicite
+        if rnorm ≤ tol
+            return x, k, q
+        end
+    end
+    return x, max_iter, q
 end
 ```
 
@@ -88,8 +165,15 @@ Votre premier problème test sera généré aléatoirement avec $n = 10$.
 
 ```{julia}
 n = 10
-# g_rand = ...
-# H_rand = ...
+Random.seed!(42)
+A = randn(n, n)                       
+g_rand = randn(n)
+H_rand = Symmetric(A' * A + I)            # SPD
+@printf("\n—— STEEPEST‑DESCENT (random n = 10) ——\n")
+x_sd, its_sd = steepest_qp(g_rand, H_rand)
+
+@printf("\n——   BFGS  (random n = 10) ——\n")
+x_bfgs, its_bfgs = bfgs_qp(g_rand, H_rand)
 ```
 
 Utiliser ensuite les problèmes quadratiques convexes de la collection Maros et Meszaros.
@@ -127,7 +211,12 @@ Choisissez 3 problèmes :
 * un avec $n \approx 100$.
 
 ```{julia}
+g10, H10 = get_gH("GENHS28.SIF")
+g50, H150 = get_gH("DUAL4.SIF")
 g100, H100 = get_gH("CVXQP1_S.SIF")
+@show length(g10)
+@show length(g50)
+@show length(g100)
 ```
 
 Attention :
@@ -135,18 +224,82 @@ Attention :
 * il se peut que $g = 0$---dans ce cas, changez $g$ en `ones(n)` ;
 * il se peut que $H$ soit seulement semi-définie positive et pas définie positive---dans ce cas, ajoutez-lui un petit multiple de l'identité via, par exemple,
 
-```julia
-g, H = get_gH(name, 1.0e-3)
+```{julia}
+g, H = get_gH("GENHS28.SIF", 1.0e-3)
 ```
 
 ## Validation de la méthode de la plus forte pente
 
 ```{julia}
 # votre code ici
+cases = [
+    ("GENHS28.SIF", "≈10"),    # tag = texte explicatif
+    ("DUAL4.SIF",   "≈50"),
+    ("CVXQP1_S.SIF","≈100")
+]
+results = Vector{Tuple}()
+
+for (names,tag) in cases
+    g, H = get_gH(names, 1e-3)
+
+# ---> correction si g est nul
+    if all(g .== 0)
+        g .= ones(length(g))
+    end
+
+    @printf("\n=== Problème  %s  (tag %s, n=%d) ===\n",
+            names, tag, length(g))
+
+     x_sd,  it_sd,  q_sd   = steepest_qp(g, H)          # Steepest‑Descent
+     grad_sd               = norm(H*x_sd + g)
+    
+     push!(results,
+           (names, tag, it_sd, grad_sd, q_sd,))
+end
+
+# convertir chaque tuple en Vector et empiler en lignes
+data = [collect(t) for t in results]          # Vector{Vector}
+data_mat = permutedims(hcat(data...))
+# -------- Tableau récapitulatif ----------------------------------------
+pretty_table(data_mat;
+    header = ["cas", "taille","it‑SD", "‖∇q‖_SD", "q_SD"],
+    formatters = ft_printf("%.4e", 4:5))
 ```
 
 ## Validation de la méthode BFGS
 
 ```{julia}
 # votre code ici
+cases = [
+    ("GENHS28.SIF", "≈10"),    # tag = texte explicatif
+    ("DUAL4.SIF",   "≈50"),
+    ("CVXQP1_S.SIF","≈100")
+]
+results = Vector{Tuple}()
+
+for (names,tag) in cases
+    g, H = get_gH(names, 1e-3)
+
+    if all(g .== 0)
+        g .= ones(length(g))
+    end
+
+    @printf("\n=== Problème  %s  (tag %s, n=%d) ===\n",
+            names, tag, length(g))
+
+
+    x_bfgs, it_bfgs, q_bg = bfgs_qp(g, H)              # BFGS
+    grad_bfgs             = norm(H*x_bfgs + g)
+
+    push!(results,
+          (names, tag,it_bfgs, grad_bfgs, q_bg))
+    
+end
+# convertir chaque tuple en Vector et empiler en lignes
+data = [collect(t) for t in results]          # Vector{Vector}
+data_mat = permutedims(hcat(data...))
+# -------- Tableau récapitulatif ----------------------------------------
+pretty_table(data_mat;
+    header = ["cas", "taille","it‑BFGS", "‖∇q‖_BFGS", "q_BFGS"],
+    formatters = ft_printf("%.4e", 4:5))
 ```
