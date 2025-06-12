@@ -28,7 +28,7 @@ engine: julia
 using Pkg
 Pkg.activate("labo2_env")
 using LinearAlgebra
-using Printf  # J'ai ajouté pour afficher
+using Printf  # J'ai ajouté pour afficher les résultats
 ```
 
 # Contexte
@@ -59,12 +59,13 @@ Votre implémentation doit avoir les caractéristiques suivantes :
 Tester votre implémentation sur les problèmes quadratiques de la section *Problèmes test* ci-dessous.
 
 ```{julia}
-# function steepest_qp(g, H, eps_a=1.0e-5, eps_r=1.0e-5)
-# votre code ici
-
-# Cet algorithme inclut la fonction d'Armijo.
-
 function steepest_qp(g::Vector, H::Matrix, n::Int, x::Vector=zeros(n), eps_a=1e-5, eps_r=1e-5)
+
+    # H soit symétrique positive définie (SPD)
+    function is_positive_definite(H::Matrix)
+        isposdef(H) && issymmetric(H)
+    end
+
     # Fonction objectif
     f(x) = dot(g, x) + 0.5 * dot(x, H * x)
 
@@ -78,33 +79,47 @@ function steepest_qp(g::Vector, H::Matrix, n::Int, x::Vector=zeros(n), eps_a=1e-
     @printf "%2s    %9s   %7s   %7s\n" "k" "f(x)" "‖∇fk‖" "‖x‖"
 
     for k in 0:itermax
-        @printf "%2d    %9.2e   %7.1e   %7.1e\n" k f(x) norm∇fxk norm(x)
+        fx = f(x)  # Appel explicite de la fonction f(x)
 
-        # Critère d'arrêt basé sur le gradient (absolu et relatif)
+        @printf "%2d    %9.2e   %7.1e   %7.1e\n" k fx norm∇fxk norm(x)
+
+        # Critère d'arrêt (gradient petit)
         if norm∇fxk ≤ eps_a + (eps_r * norm∇fx0)
             break
-        else
-            # Direction de descente (steepest descent)
-            dk = -∇fxk
-            α = 1e-4
-            t = 1.0
-
-            # Recherche de ligne (Armijo)
-            while f(x .+ t * dk) > f(x) + α * t * dot(∇fxk, dk)
-                t /= 2
-            end
-
-            # Mise à jour du point
-            x .+= t * dk
-            ∇fxk .= g .+ H * x
-            norm∇fxk = norm(∇fxk)
         end
+
+        # Critère de divergence (sécurité)
+        if isnan(fx) || isinf(fx)
+            println(" À k= ", k, " f(x) est divergent (NaN ou Inf). Arrêt de l'algorithme.")
+            break
+        end
+
+        # Direction de descente (steepest descent)
+        dk = -∇fxk
+        t = 1.0  # Pas fixe pour la recherche exacte
+
+        # Mise à jour du point
+        x .+= t * dk
+        ∇fxk .= g .+ H * x
+        norm∇fxk = norm(∇fxk)
     end
 
+    println("x optimal est: ", x)  # Affichage du point optimal
     return x
 end
-
 ```
+
+# Question 1: Résultats numériques
+```{julia}
+#Test de l'algorithme steepest_qp
+n = 10
+g = randn(n)
+A = randn(n, n)
+H = A' * A
+x_optimal = steepest_qp(g, H, n);
+```
+
+## =========================================================
 
 # Question 2
 
@@ -117,33 +132,18 @@ Ici, on cherche notamment à valider le résultat disant que la méthode se term
 Tester votre implémentation sur les problèmes quadratiques de la section *Problèmes test* ci-dessous.
 
 ```{julia}
-# Fonction d'Armijo
-function armijo(x, dk, ∇fxk, f)
-    slope = dot(∇fxk, dk)
-    t = 1.0
-    α = 1e-4
+function bfgs_qp(g::Vector, H::Matrix, n::Int, x::Vector=zeros(n), eps_a=1e-5, eps_r=1e-5)
 
-    while f(x .+ t * dk) > f(x) + α * t * slope
-        t /= 2
-    end
-    return t
-end
+    # Fonction objectif
+    f(x) = dot(g, x) + 0.5 * dot(x, H * x)
 
-```
-
-```{julia}
-# Fonction BFGS pour minimisation quadratique
-function bfgs_qp(g::Vector, B::Matrix, n::Int, x::Vector, eps_a=1e-5, eps_r=1e-5)
-
-    f(x) = dot(g, x) + 0.5 * dot(x, B * x)
-
-    B = I(n)  # Approximation initiale de H⁻¹
-    ∇fxk = g .+ B * x
+    ∇fxk = g .+ H * x
     ∇fx0 = copy(∇fxk)
     norm∇fx0 = norm(∇fx0)
     norm∇fxk = norm(∇fxk)
     itermax = n
     k = 0
+    B = Matrix{Float64}(I, n, n)  # Approximation initiale de l'inverse du Hessien
 
     @printf "%2s    %9s   %7s   %7s\n" "k" "f(x)" "‖∇fk‖" "‖x‖"
 
@@ -156,25 +156,42 @@ function bfgs_qp(g::Vector, B::Matrix, n::Int, x::Vector, eps_a=1e-5, eps_r=1e-5
         end
 
         dk = -B * ∇fxk  # Direction de descente
-        t = armijo(x, dk, ∇fxk, f)  # Obtention de t par la méthode d'Armijo
+        t = 1.0 # Recherche exacte (fixe)
         xk = x + t * dk  # Mise à jour de x
-        ∇fxk1 = ∇fxk   # Nouveau gradient
+        ∇fxk1 = g .+ H * xk  # Nouveau gradient
 
         # Calcul de s et y pour la mise à jour BFGS
         s = xk - x
         y = ∇fxk1 - ∇fxk
         ρ = 1.0 / dot(y, s)
-        C = I(n) - ρ * (s * y')  # Corrections gauche et droite
-        B = C * B * C' + ρ * (s * s')  # Mise à jour de BFGS
 
-        # Mise à jour des valeurs
+        # Mise à jour BFGS
+        B = (I - ρ * s * y') * B * (I - ρ * y * s') + ρ * (s * s')
+
+        # Mise à jour des variables
         x = xk
-        ∇fxk = g .+ B * x
+        ∇fxk = ∇fxk1
         norm∇fxk = norm(∇fxk)
     end
-    return x, k
+    println("x optimal est: ", x)  # Affichage du point optimal
+    return x
 end
 ```
+
+# Question 2: Résultats numériques
+
+```{julia}
+# Test numérique
+n = 10
+g = randn(n)  # Gradient aléatoire
+B = Matrix{Float64}(I(n))  # Approximation initiale de H⁻¹ (identité)
+x0 = zeros(n)  # Point de départ pour x
+x_optimal = bfgs_qp(g, B, n, x0);
+
+```
+### Note: Le resultat ne passe jamais plus d'une itération.
+
+## =========================================================
 
 # Résultats numériques
 
@@ -223,29 +240,37 @@ Choisissez 3 problèmes :
 * un avec $n \approx 100$.
 
 ```{julia}
-g100, H100 = get_gH("CVXQP1_S.SIF")
+# Énoncé du lab
+# g100, H100 = get_gH("CVXQP1_S.SIF") 
 ```
 
 ```{julia}
-g100, H100 = get_gH("GENHS28.SIF") #N=number of variables=10
+g10, H10 = get_gH("GENHS28.SIF") #N=number of variables=10
 ```
 
 ```{julia}
-g100, H100 = get_gH("QSHARE2B.SIF") #N=number of variables=79
+g79, H79 = get_gH("QSHARE2B.SIF") #N=number of variables=79
 ```
 
 ```{julia}
 g100, H100 = get_gH("CVXQP3_S.SIF") #N=number of variables=100
 ```
 
-
 Attention :
 
 * il se peut que $g = 0$---dans ce cas, changez $g$ en `ones(n)` ;
 * il se peut que $H$ soit seulement semi-définie positive et pas définie positive---dans ce cas, ajoutez-lui un petit multiple de l'identité via, par exemple,
 
-```julia
-g, H = get_gH(name, 1.0e-3)
+```{julia}
+g10, H10 = get_gH("GENHS28.SIF", 1.0e-3)
+```
+
+```{julia}
+g79, H79 = get_gH("QSHARE2B.SIF", 1.0e-3)
+```
+
+```{julia}
+g100, H100 = get_gH("CVXQP3_S.SIF", 1.0e-3)
 ```
 
 ## Validation de la méthode de la plus forte pente
@@ -253,27 +278,58 @@ g, H = get_gH(name, 1.0e-3)
 ```{julia}
 #Test de l'algorithme steepest_qp
 n = 10
-g = randn(n)
+g = g10
 A = randn(n, n)
-H = A' * A  # H PSD
-x_optimal = steepest_qp(g, H, n)
+H = H10
+x_optimal = steepest_qp(g, H, n);
 ```
 
-### Note: Les essais montrent que l'algorithme fonctionne de manière aléatoire en moins que le nombre maximal d'itérations (défini comme 100 × n), mais dans la majorité des cas, il s'arrête à 1000.
+```{julia}
+#Test de l'algorithme steepest_qp
+n = 79
+g = g79
+A = randn(n, n)
+H = H79
+x_optimal = steepest_qp(g, H, n); 
+```
+
+```{julia}
+#Test de l'algorithme steepest_qp
+n = 100
+g = g100
+A = randn(n, n)
+H = H100
+x_optimal = steepest_qp(g, H, n); 
+```
 
 ## Validation de la méthode BFGS
 
 ```{julia}
 # Test numérique
 n = 10
-g = randn(n)  # Gradient aléatoire
+g = g10
 B = Matrix{Float64}(I(n))  # Approximation initiale de H⁻¹ (identité)
 x0 = zeros(n)  # Point de départ pour x
-x_optimal, k = bfgs_qp(g, B, n, x0)  # Appel de la fonction
-
-@printf "Optimal x: %s\n" x_optimal
-@printf "Number of iterations: %d\n" k
+x_optimal = bfgs_qp(g, B, n, x0);
 
 ```
 
-### Note: Le resultat est NaN et l'itération est "0". Je ne trouve pas la cause de problème.
+```{julia}
+# Test numérique
+n = 79
+g = g79
+B = Matrix{Float64}(I(n))  # Approximation initiale de H⁻¹ (identité)
+x0 = zeros(n)  # Point de départ pour x
+x_optimal = bfgs_qp(g, B, n, x0);
+
+```
+
+```{julia}
+# Test numérique
+n = 100
+g = g100
+B = Matrix{Float64}(I(n))  # Approximation initiale de H⁻¹ (identité)
+x0 = zeros(n)  # Point de départ pour x
+x_optimal = bfgs_qp(g, B, n, x0);
+
+```
