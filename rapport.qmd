@@ -76,7 +76,7 @@ function steepest_qp(g, H; eps_a = 1e-5, eps_r = 1e-5,
 
     for k in 1:max_iter
         p  = -r
-        Hp = H * p
+        Hp = H * p                        # unique produit H p
         α  = dot(r, r) / dot(p, Hp)       # pas exact
         x .+= α * p
 
@@ -109,29 +109,29 @@ Tester votre implémentation sur les problèmes quadratiques de la section *Prob
 
 ```{julia}
 function bfgs_qp(g, H; eps_a = 1e-5, eps_r = 1e-5, max_iter = length(g))
-    n    = length(g)
-    x    = zeros(eltype(g), n)
+    n    = length(g)                     # dimension
+    x    = zeros(eltype(g), n)           # x₀ = 0
     r    = g + H*x                       # gradient ∇q(x₀)
-    r0   = norm(r)
-    tol  = eps_a + eps_r * r0
+    r0   = norm(r)                       # norme initiale   
+    tol  = eps_a + eps_r * r0            # seuil d’arrêt
     q    = 0.0                           # q(x₀) = 0 (car x₀ = 0)
-    B    = Matrix{eltype(g)}(I, n, n)    # identité flottante
+    B    = Matrix{eltype(g)}(I, n, n)    # B₀ = I  (approx. H⁻¹)
 
     @printf("%4s  %12s  %13s\n", "k", "‖∇q(x)‖", "q(x)")
     @printf("%4d  %12.4e  %13.6e\n", 0, r0, q)
 
     for k in 1:max_iter
-        p  = -B \ r
-        Hp = H * p
+        p  = -B \ r                      # solve  B p = -r   (O(n²))
+        Hp = H * p                       # unique produit H p 
         α  = -(r' * p) / (p' * Hp)       # pas exact
 
-        s  = α * p
+        s  = α * p                       # déplacement
         x .+= s
-        q += 0.5 * α * (r' * p)          # mise‑à‑jour « gratuite »
+        q += 0.5 * α * (r' * p)          # q_{k+1} = q_k + ½ α rᵀp
 
-        r_new = r + α * Hp
-        y     = r_new - r
-        sy    = dot(s, y)
+        r_new = r + α * Hp               # r_{k+1} = r_k + α H p
+        y     = r_new - r                # = α H p
+        sy    = dot(s, y)                # sᵀy  (doit être > 0)
 
         # test de petite courbure
         if sy ≤ 1e-12
@@ -171,7 +171,7 @@ H_rand = Symmetric(A' * A + I)            # SPD
 @printf("\n—— STEEPEST‑DESCENT (random n = 10) ——\n")
 x_sd, its_sd = steepest_qp(g_rand, H_rand)
 
-@printf("\n——   BFGS OPTIMISÉ (random n = 10) ——\n")
+@printf("\n——   BFGS  (random n = 10) ——\n")
 x_bfgs, its_bfgs = bfgs_qp(g_rand, H_rand)
 ```
 
