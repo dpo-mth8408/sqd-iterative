@@ -28,6 +28,7 @@ engine: julia
 using Pkg
 Pkg.activate("labo2_env")
 using LinearAlgebra
+using Printf
 ```
 
 # Contexte
@@ -59,8 +60,70 @@ Votre implémentation doit avoir les caractéristiques suivantes :
 Tester votre implémentation sur les problèmes quadratiques de la section *Problèmes test* ci-dessous.
 
 ```{julia}
+"""
+steepest_qp(g, H, eps_a=1.0e-5, eps_r=1.0e-5)
+
+Résout un problème quadratique non contraint à l'aide de la méthode 
+du **gradient à pas optimal** (Steepest Descent),
+où `H` est une matrice symétrique définie positive.
+
+# Arguments
+
+- `g::Vector{Float64}` : le gradient du problème quadratique (terme linéaire),
+- `H::Matrix{Float64}` : la matrice hessienne symétrique définie positive,
+- `eps_a::Float64` : tolérance **absolue** pour l'arrêt (défaut = 1e-5),
+- `eps_r::Float64` : tolérance **relative** (défaut = 1e-5).
+
+# Retour
+
+- `x::Vector{Float64}` : vecteur solution approximative minimisant
+ la fonction quadratique,
+- `k::Int` : nombre d'itérations effectuées.
+
+# Affichage à chaque itération :
+- `||résidu||` : norme du gradient actuel (condition d’arrêt),
+- `||erreur||` : distance à la solution exacte,
+- `quadratic function` : valeur de la fonction quadratique.
+
+
+"""
 function steepest_qp(g, H, eps_a=1.0e-5, eps_r=1.0e-5)
-  # votre code ici
+
+    # Taille du problème
+    n = length(g) 
+    # Initialisation de la derection
+    p = -g
+    beta = p'*p
+    nrmg = copy(sqrt(beta))
+    k=0
+
+    # Point initial
+    x=zeros(n)
+    # Solution exact
+    xstart = -H\g
+    nrmx = norm(xstart)
+    # Initialisationd de l'objectif
+    quadra = 0
+    println("Iter\t||résidu relatif ||\t||erreur relatif||\t quadratic function")
+    while sqrt(beta) > eps_a + eps_r*nrmg  && k < n
+
+        k+=1 
+        q = H*p
+        alpha = beta/(p'*q)
+        # Mise à jour des itérés et des directions
+        x .+= alpha * p
+        p .-= alpha * q 
+        beta = p'*p
+        nrmerror = norm(xstart - x)
+        # Mise à jour de la fonction objective
+        quadra -= 0.5*alpha*beta
+
+        println(@sprintf("%d\t\t\t%.3e\t\t\t\t%.3e\t\t\t\t%.3e", 
+        k, sqrt(beta)/nrmg, nrmerror/nrmx, quadra))
+    end
+    println("Le nombre de multiplication par H     :", k)
+    return x, k
+    
 end
 ```
 
@@ -75,8 +138,80 @@ Ici, on cherche notamment à valider le résultat disant que la méthode se term
 Tester votre implémentation sur les problèmes quadratiques de la section *Problèmes test* ci-dessous.
 
 ```{julia}
+"""
+bfgs_qp(g, H, eps_a=1.0e-5, eps_r=1.0e-5)
+
+Résout un problème quadratique en utilisant la méthode **BFGS**.
+# Arguments
+
+- `g::Vector{Float64}` : le vecteur gradient (terme linéaire de la fonction quadratique),
+- `H::Matrix{Float64}` : la matrice de Hessien (symétrique définie positive),
+- `eps_a::Float64` : tolérance **absolue** sur la norme du gradient (défaut = 1e-5),
+- `eps_r::Float64` : tolérance **relative** (défaut = 1e-5).
+
+# Retour
+
+- `x::Vector{Float64}` : solution approchée du problème,
+- `k::Int` : nombre d’itérations effectuées.
+"""
+
 function bfgs_qp(g, H, eps_a=1.0e-5, eps_r=1.0e-5)
-  # votre code ici
+
+    n = length(g)
+    x = zeros(n)
+    x_new = copy(x)
+    In = Matrix(I,n,n)  
+    Hess = In      
+    r = copy(g)
+    r_new = copy(r)
+    p = -r
+    beta = p'*r
+    nrmg = norm(r)
+    nrm  = copy(nrmg)
+    k = 0
+    xstart = -H\g
+    nrmx = norm(xstart)
+    quadra = 0
+    println("Iter\t\t||résidu relatif||\t||erreur relatif||\t quadratic function")
+    while nrm > eps_a + eps_r.*nrmg && k < n
+
+      k += 1
+      q = H*p
+      alpha = -beta/(p'*q)
+
+      # Mise à jour des itérés et des résidus
+      x_new .+= alpha.* p
+      r_new .+= alpha.* q
+
+      # Aprroximation de l'inverse du hessien 
+      s = x_new - x
+      y = r_new - r
+
+      rho = 1/(y'*s)
+      V = In - (rho.*s)*y'
+      Hess = V*Hess*V'+(rho.*s)*s' 
+
+      # Direction de descente
+      p = -(Hess*r)
+
+      x = copy(x_new)
+      r = copy(r_new)
+      
+      beta = p'*r
+
+      # Norme du gradient
+      nrm = norm(r)
+      # Mise à jour de la fonction objective
+      quadra += 0.5*alpha*beta
+      # Norme de l'erreur
+      nrmerror = norm(xstart - x)
+      println(@sprintf("%d\t\t\t%.3e\t\t\t\t%.3e\t\t\t\t%.3e", 
+    k, nrm/nrmg, nrmerror/nrmx, quadra))
+
+    end
+    println("Le nombre de multiplication par H   :", k)
+    return x, k
+    
 end
 ```
 
@@ -88,8 +223,10 @@ Votre premier problème test sera généré aléatoirement avec $n = 10$.
 
 ```{julia}
 n = 10
-# g_rand = ...
-# H_rand = ...
+g_rand  = ones(n)
+A       = rand(n, n)
+H_rand  = Matrix(I, n, n) + A*A'
+x, iter = bfgs_qp(g_rand, H_rand)
 ```
 
 Utiliser ensuite les problèmes quadratiques convexes de la collection Maros et Meszaros.
@@ -139,14 +276,29 @@ Attention :
 g, H = get_gH(name, 1.0e-3)
 ```
 
+```{julia}
+g10, H10 = get_gH("ksip.SIF", 1.0e-3)
+println(g10)
+g50, H50 = get_gH("qafiro.SIF", 1.0e-3)
+println(g50)
+g50 = ones(length(g50))
+g100, H100 = get_gH("qadlittl.SIF", 1.0e-3)
+println(g100)
+```
+
 ## Validation de la méthode de la plus forte pente
 
 ```{julia}
-# votre code ici
+x, k = steepest_qp(g10, H10)
+x, k = steepest_qp(g50, H50)
+x, k = steepest_qp(g100, H100)
 ```
+
 
 ## Validation de la méthode BFGS
 
 ```{julia}
-# votre code ici
+x, k = bfgs_qp(g10, H10)
+x, k = bfgs_qp(g50, H50)
+x, k = bfgs_qp(g100, H100)
 ```
