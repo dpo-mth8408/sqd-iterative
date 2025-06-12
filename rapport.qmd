@@ -209,7 +209,8 @@ function bfgs_qp(g, H, eps_a=1.0e-5, eps_r=1.0e-5)
     k, nrm/nrmg, nrmerror/nrmx, quadra))
 
     end
-    println("Le nombre de multiplication par H   :", k)
+    println("Le nombre de multiplication par H        :", k)
+    println("Erreur d'approximation de la matrice H   :", norm(inv(Hess) - H)/norm(H))
     return x, k
     
 end
