@@ -2,8 +2,8 @@
 title: "Rapport de laboratoire 2"
 subtitle: "MTH8408"
 author:
-  - name: Votre nom
-    email: votre.adresse@polymtl.ca
+  - name: Chris David Fogué
+    email: ouepiya-chris-david.fogue@polymtl.ca
     affiliation:
       - name: Polytechnique Montréal
 format:
@@ -27,7 +27,10 @@ engine: julia
 #| output: false
 using Pkg
 Pkg.activate("labo2_env")
+Pkg.add("Printf")
 using LinearAlgebra
+using Random
+using Printf
 ```
 
 # Contexte
@@ -61,6 +64,66 @@ Tester votre implémentation sur les problèmes quadratiques de la section *Prob
 ```{julia}
 function steepest_qp(g, H, eps_a=1.0e-5, eps_r=1.0e-5)
   # votre code ici
+"""
+    steepest_qp(g, H, eps_a=1e-5, eps_r=1e-5)
+
+Résolution d'un problème quadratique par la méthode de la plus forte pente.
+
+Minimise la fonction : f(x) = g'x + 0.5*x'H x
+
+# Arguments
+- `g::Vector{Float64}`: Valeur du gradient pour le terme linéaire de la fonction objectif
+- `H::Matrix{Float64}`: Matrice symétrique définie positive du terme quadratique
+- `eps_a::Float64=1e-5`: Tolérance absolue pour le critère d'arrêt
+- `eps_r::Float64=1e-5`: Tolérance relative pour le critère d'arrêt
+
+# Sortie
+- `x::Vector{Float64}`: Vecteur solution
+- `hist::Vector{NamedTuple}`: Historique des itérations contenant :
+    - k: Itérateur
+    - x: Solution courante (à l'itération k)
+    - grad_norm: Norme du gradient
+    - alpha: Longueur du pas
+    - f: Valeur courante de la fonction objectif
+"""    
+# Initialisation des valeurs
+    n = length(g)
+    x = zeros(n)  
+    k =0
+    grad_k = copy(g)
+    g_norm0 = norm(grad_k)
+    hist = []
+    max_iter = min(50n, 2000)  # Critère d'arrêt sur le nombre d'itérations
+    freq = max(1, max_iter ÷ 20) # Fréquence d'affichage
+
+    
+    @printf("\n%4s %12s %12s %12s\n", "It", "||Grad||", "Step", "f(x)")
+    println("-"^45)
+    
+    # Critère d'arrêt sur l'erreur relative et absolue et sur le nombre d'itérations
+    while norm(grad_k) > eps_a + eps_r*g_norm0   &&    k ≤ max_iter    
+
+        d = -grad_k                                         # Direction de descente
+        alpha = (grad_k' * grad_k) / (d' * H * d)           # Recherche linéaire exacte
+        x .+= alpha * d                                     # Mise à jour
+        quad = g' * x + 0.5 * x' * H * x                    # Calcul de la quadratique
+        
+
+        # Mise à jour de l'historique des valeurs pertinentes à afficher
+        push!(hist, (k=k, x=copy(x), grad_norm=norm(grad_k), alpha=alpha, f=quad))     
+        
+        grad_k = g + H * x                                  # Calcul du gradient
+        k += 1     
+
+        if k % freq == 0 || k ≤ 3 || norm(grad_k) ≤ eps_a + eps_r*g_norm0
+
+            @printf("%4d %12.2e %12.2e %12.2e\n", k-1, norm(grad_k), alpha, quad)
+
+        end
+    end
+    
+    println("-"^45, "\nConvergence atteinte en $k iterations")
+    return x, hist
 end
 ```
 
@@ -77,6 +140,86 @@ Tester votre implémentation sur les problèmes quadratiques de la section *Prob
 ```{julia}
 function bfgs_qp(g, H, eps_a=1.0e-5, eps_r=1.0e-5)
   # votre code ici
+"""
+    bfgs_qp(g, H, eps_a=1.0e-5, eps_r=1.0e-5)
+
+Résolution d'un problème quadratique par la méthode BFGS.
+
+Minimise la fonction : f(x) = g'x + 0.5*x'H x
+
+# Arguments
+- `g::Vector{Float64}`: Valeur du gradient pour le terme linéaire de la fonction objectif
+- `H::Matrix{Float64}`: Matrice symétrique définie positive du terme quadratique
+- `eps_a::Float64=1e-5`: Tolérance absolue pour le critère d'arrêt
+- `eps_r::Float64=1e-5`: Tolérance relative pour le critère d'arrêt
+
+# Sortie
+- `x::Vector{Float64}`: Vecteur Solution 
+- `hist::Vector{NamedTuple}`: Historique des itérations contenant :
+    - k: Itérateur
+    - x: Solution courante (à l'itération k)
+    - grad_norm: Norme du gradient
+    - alpha: Longueur du pas
+    - f: Valeur courante de la fonction objectif
+"""
+
+# Initialisation des valeurs
+    n = length(g)
+    x = zeros(n)
+    H_k = Matrix(1.0I, n, n)  # Initialisation de H_k 
+    hist = []
+    g_norm0 = norm(g) 
+    max_iter = min(200 + 10*n, 5000)  # Critère d'arrêt sur le nombre d'itérations
+    freq = max(1, max_iter ÷ 20)  # Fréquence d'affichage
+    
+    # En-tête d'affichage
+    @printf("\n%5s  %15s  %15s  %15s\n", "Iter", "||∇f||", "alpha", "f(x)")
+    @printf("%s\n", repeat("=", 58))
+    
+    grad_k = g + H * x
+    
+    for k in 1:max_iter
+        grad_norm = norm(grad_k)
+        quad = g' * x + 0.5 * x' * H * x 
+        
+        # Critère d'arrêt
+        if grad_norm ≤ eps_a + eps_r * g_norm0
+            @printf("%5d  %15.6e  %15s  %15.6e\n", k, grad_norm, "", quad)
+            break
+        end
+        
+        # # Calcul de la direction de descente 
+        d = -H_k * grad_k
+        
+        # Recherche linéaire exacte
+        alpha = (grad_k' * d) / (d' * H * d)
+        
+        # Mise à jour de la position
+        s = alpha * d
+        x .+= s
+        
+        # Calcul du gradient et de l'écart y
+        grad_k_new = g + H * x
+        y = grad_k_new - grad_k
+        
+        # Mise à jour BFGS
+        p = 1.0 / dot(y, s)
+        H_k = (I - p*s*y') * H_k * (I - p*y*s') + p*s*s'
+        
+        # Stockage de l'historique
+        push!(hist, (k=k, x=copy(x), grad_norm=grad_norm, alpha=alpha, f=quad))
+
+        # Affichage
+        if k ≤ 3 || k % freq == 0 || k == max_iter
+            @printf("%5d  %15.6e  %15.6e  %15.6e\n", k, grad_norm, alpha, quad)
+        end
+
+        grad_k = grad_k_new
+    end
+    
+    @printf("%s\n", repeat("=", 58))
+    println("Solution trouvée en $(length(hist)) itérations")
+    return x, hist
 end
 ```
 
@@ -87,9 +230,14 @@ end
 Votre premier problème test sera généré aléatoirement avec $n = 10$.
 
 ```{julia}
+Random.seed!(123)
 n = 10
-# g_rand = ...
-# H_rand = ...
+g_rand = randn(n)
+A = randn(n, n)
+H_rand = Symmetric(A' * A + 0.001 * I)
+
+println("g_rand = ", g_rand)
+println("H_rand = ", H_rand)
 ```
 
 Utiliser ensuite les problèmes quadratiques convexes de la collection Maros et Meszaros.
@@ -127,7 +275,10 @@ Choisissez 3 problèmes :
 * un avec $n \approx 100$.
 
 ```{julia}
-g100, H100 = get_gH("CVXQP1_S.SIF")
+# g50, H50 = get_gH("AUG2DC.SIF", 1e-3)
+g50, H50 = get_gH("QADLITTL.SIF", 1e-3)
+# g100, H100 = get_gH("CVXQP1_S.SIF", 1e-3)
+g100, H100 = get_gH("CONT-100.SIF", 1e-3)
 ```
 
 Attention :
@@ -143,10 +294,27 @@ g, H = get_gH(name, 1.0e-3)
 
 ```{julia}
 # votre code ici
+# Plus forte pente pour le problème aléatoire n = 10
+x_steepest, hist_steepest = steepest_qp(g_rand, H_rand)
+
+# Plus forte pente n= 50
+x_steepest, hist_steepest = steepest_qp(g50, H50)
+
+# Plus forte pente n = 100
+x_steepest, steepest = steepest_qp(g100, H100)
 ```
 
 ## Validation de la méthode BFGS
 
 ```{julia}
 # votre code ici
+# BFGS pour le problème aléatoire n = 10
+x_bfgs, hist_bfgs = bfgs_qp(g_rand, H_rand)
+
+# BFGS pour n = 50
+x_bfgs, hist_bfgs = bfgs_qp(g50, H50)
+
+# BFGS pour n = 100
+#x_bfgs, hist_bfgs = bfgs_qp(g100, H100)
+
 ```
