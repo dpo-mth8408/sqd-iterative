@@ -2,8 +2,8 @@
 title: "Rapport de laboratoire 2"
 subtitle: "MTH8408"
 author:
-  - name: Votre nom
-    email: votre.adresse@polymtl.ca
+  - name: Joey Van Melle
+    email: joey.van-melle@polymtl.ca
     affiliation:
       - name: Polytechnique Montréal
 format:
@@ -59,8 +59,81 @@ Votre implémentation doit avoir les caractéristiques suivantes :
 Tester votre implémentation sur les problèmes quadratiques de la section *Problèmes test* ci-dessous.
 
 ```{julia}
+using LinearAlgebra
+using Printf
+
+"""
+Retourne le nombre maximal d'itération pour la méthode de la plus forte pente, basée sur la dimension du problème.
+n : le nombre de variables du problème.
+nbr_of_operations_upper_bound : Une borne sur le nombre maximal de calcul à effectuer par l'ordinateur
+"""
+function get_max_iter(n, nbr_of_operations_upper_bound=100000)
+    #Assuming the upper-bound on the complexity of matrix*vector multiplication is n^3
+   operations_per_step = n^3 + 6*n
+   return floor(nbr_of_operations_upper_bound/operations_per_step)
+end
+
+
+
+"""
+    my_steepest_qp(g, H, eps_a=1.0e-5, eps_r=1.0e-5)
+
+    Résoud un problème d'optimisation quadratique à l'aide de la méthode de la plus forte pente avec recherche linéaire exacte.
+    La recherche débute avec l'approximation initiale x = 0.
+
+    g : un vecteur de taille n. C'est le gradient du problème.
+    H : une matrice carrée symmétrique définie positive de taille n x n. C'est la matrice Hessienne du problème.
+    n : la dimensions du problème.
+    eps_a : critère d'arrêt absolu.
+    esp_r : critère d'arrêt relatif.
+
+    Retourne : Le vecteur solution de la première approximation respectant les critères d'arrêts.
+"""
 function steepest_qp(g, H, eps_a=1.0e-5, eps_r=1.0e-5)
-  # votre code ici
+    # Verify that the provided variables match the conditions.
+    n = size(H)[1]
+    x = zeros(n)
+    gx = g'*x
+    size(H) == (n, n) || throw(DimensionMismatch("H doit être une matrice carrée de dimensions n x n"))
+    length(gx) == n || throw(DimensionMismatch("Si H est de dimension n x n, alors g doit être de dimension n."))
+    isposdef(H) || throw(error("H doit être définie positive."))
+    issymmetric(H) || throw(error("H doit être symmétrique."))
+
+    # Calculate the maximum number of iterations based on the dimensions of the problem.
+    max_iter = get_max_iter(n)
+    
+    # Set up the While loop.
+    gnorm = norm(gx)
+    gnorm0 = gnorm
+    nbr_iter = 0
+
+    @printf  "%2s  %7s\n" "it" "‖∇f(x)‖"
+
+    # Iterate until approximation is found.
+    while(norm(gx) > eps_a + eps_r * gnorm0)
+        # Verify that the number of iterations doesn't exceed the maximum allowed
+        if nbr_iter > max_iter
+            println("La recherche n'a pas réussi à converger.")
+            return
+        end
+
+        # Calculate the next step 
+        d = gx
+        t = gnorm^2 / (dot(d', H*d))
+        x .-= t.*d
+        gx = g'*x
+        gnorm = norm(gx)
+        nbr_iter += 1
+
+        #Print the result at step "nbr_iter"
+        #println("Norme du gradient à l'iteration $nbr_iter : $gnorm.")
+        @printf "%2d  %7.1e\n" nbr_iter gnorm
+    end
+
+    println("La recherche a convergée.")
+    println("Norme du gradient après convergence : $gnorm")
+    println("Valeurs du vecteur-solution : $x")
+    return x
 end
 ```
 
@@ -75,9 +148,88 @@ Ici, on cherche notamment à valider le résultat disant que la méthode se term
 Tester votre implémentation sur les problèmes quadratiques de la section *Problèmes test* ci-dessous.
 
 ```{julia}
-function bfgs_qp(g, H, eps_a=1.0e-5, eps_r=1.0e-5)
-  # votre code ici
+using LinearAlgebra
+using Printf
+
+"""
+Retourne le nombre maximal d'itération pour la méthode BFGS, basée sur la dimension du problème.
+n : le nombre de variables du problème.
+nbr_of_operations_upper_bound : Une borne sur le nombre maximal de calcul à effectuer par l'ordinateur
+"""
+function get_max_iter(n, nbr_of_operations_upper_bound=100000)
+    #Assuming the upper-bound on the complexity of matrix*vector multiplication is n^3
+   operations_per_step = n^3 + 6*n
+   return floor(nbr_of_operations_upper_bound/operations_per_step)
 end
+
+
+"""
+    bfgs_qp(g, H, eps_a=1.0e-5, eps_r=1.0e-5)
+
+    Résoud un problème d'optimisation quadratique à l'aide de la méthode bfgs.
+    La recherche débute avec l'approximation initiale x = 0.
+
+    g : un vecteur de taille n. C'est le gradient du problème.
+    H : une matrice carrée symmétrique définie positive de taille n x n. C'est la matrice Hessienne du problème.
+    n : la dimension du problème.
+    eps_a : critère d'arrêt absolu.
+    esp_r : critère d'arrêt relatif.
+
+    Retourne : Le vecteur solution de la première approximation respectant les critères d'arrêts.
+"""
+function bfgs_qp(g, H, eps_a=1.0e-5, eps_r=1.0e-5)
+
+    # Verify that the provided variables match the conditions.
+    n = size(H)[1]
+    x = zeros(n)
+    gx = g'*x
+    size(H) == (n, n) || throw(DimensionMismatch("H doit être une matrice carrée de dimensions n x n"))
+    length(gx) == n || throw(DimensionMismatch("Si H est de dimension n x n, alors g doit être de dimension n."))
+    isposdef(H) || throw(error("H doit être définie positive."))
+    issymmetric(H) || throw(error("H doit être symmétrique."))
+
+    # Calculate the maximum number of iterations based on the dimensions of the problem.
+    max_iter = get_max_iter(n)
+    
+    # Set up the While loop.
+    gnorm = norm(gx)
+    gnorm0 = gnorm
+    Hk = I
+    y = 0
+    nbr_iter = 0
+    @printf  "%2s  %7s\n" "it" "‖∇f(x)‖"
+
+    # Iterate until approximation is found.
+    while(norm(gx) > eps_a + eps_r * gnorm0)
+        # Verify that the number of iterations doesn't exceed the maximum allowed
+        if nbr_iter > max_iter
+            println("La recherche n'a pas réussi à converger.")
+            return
+        end
+
+        # Calculate the next step 
+        d = Hk*(-gx)
+        t = gnorm^2 / (dot(d', H*d))
+        s = t.*d
+        x .+= s
+        gx_new = g'*x
+        y = gx_new-gx
+        gx = gx_new
+        gnorm = norm(gx)
+        nbr_iter += 1
+        p = 1/dot(y', s)
+        Hk = (I - p*s*y')*Hk*(I-p*y*s')+p*s*s'
+
+        #Print the result at step "nbr_iter"
+        @printf "%2d  %7.1e\n" nbr_iter gnorm
+    end
+
+    println("La recherche a convergée.")
+    println("Norme du gradient après convergence : $gnorm")
+    println("Valeurs du vecteur-solution : $x")
+    return x
+end
+
 ```
 
 # Résultats numériques
@@ -88,8 +240,11 @@ Votre premier problème test sera généré aléatoirement avec $n = 10$.
 
 ```{julia}
 n = 10
-# g_rand = ...
-# H_rand = ...
+g_rand = rand([-100.0, 100.0], n)
+X = rand([-100.0,100.0], 10, 10)
+H_rand = X'*X
+steepest_qp(g_rand, H_rand)
+bfgs_qp(g_rand, H_rand)
 ```
 
 Utiliser ensuite les problèmes quadratiques convexes de la collection Maros et Meszaros.
@@ -128,6 +283,8 @@ Choisissez 3 problèmes :
 
 ```{julia}
 g100, H100 = get_gH("CVXQP1_S.SIF")
+g10, h10 = get_gH("DUALC1.SIF")
+g50, h50 = get_gH("qafiro.SIF")
 ```
 
 Attention :
@@ -142,11 +299,26 @@ g, H = get_gH(name, 1.0e-3)
 ## Validation de la méthode de la plus forte pente
 
 ```{julia}
-# votre code ici
+#n = length(g100)
+#if g100 == zeros(n): g100 = ones(n)
+#n = length(g50)
+#if g50 == zeros(n): g50 = ones(n)
+#n = length(g10)
+#if g10 == zeros(n): g10 = ones(n)
+#
+#if !isposdef(H10): H10 += 1.0e-3 * I
+#if !isposdef(H50): H10 += 1.0e-3 * I
+#if !isposdef(H100): H10 += 1.0e-3 * I
+#
+#steepest_qp(g10, H10)
+#steepest_qp(g50, H50)
+#steepest_qp(g100, H100)
 ```
 
 ## Validation de la méthode BFGS
 
 ```{julia}
-# votre code ici
+bfgs_qp(g10, H10)
+bfgs_qp(g50, H50)
+bfgs_qp(g50, H50)
 ```
