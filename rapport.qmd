@@ -2,8 +2,8 @@
 title: "Rapport de laboratoire 2"
 subtitle: "MTH8408"
 author:
-  - name: Votre nom
-    email: votre.adresse@polymtl.ca
+  - name: Oihan Cordelier
+    email: oihan.cordelier@polymtl.ca
     affiliation:
       - name: Polytechnique Montréal
 format:
@@ -12,9 +12,7 @@ format:
     documentclass: article
     include-in-header:
       - text: |
-            \usepackage{eulervm}
             \usepackage{xspace}
-            \usepackage[francais]{babel}
     geometry:
       - margin=1in
     papersize: letter
@@ -27,7 +25,7 @@ engine: julia
 #| output: false
 using Pkg
 Pkg.activate("labo2_env")
-using LinearAlgebra
+using LinearAlgebra, Printf
 ```
 
 # Contexte
@@ -59,8 +57,55 @@ Votre implémentation doit avoir les caractéristiques suivantes :
 Tester votre implémentation sur les problèmes quadratiques de la section *Problèmes test* ci-dessous.
 
 ```{julia}
-function steepest_qp(g, H, eps_a=1.0e-5, eps_r=1.0e-5)
-  # votre code ici
+"""
+  steepest_qp(g, H, eps_a=1.0e-5, eps_r=1.0e-5)
+
+Find minima of quadratic convex function provided g vector and H matrix 
+using the steepest gradient descent algorithm with excact line search.
+Return the solution vector.
+"""
+function steepest_qp(g, H; eps_a=1.0e-5, eps_r=1.0e-5)
+
+  dim = length(g)
+
+  max_iter = 100*dim
+
+  if norm(g) == 0
+    println("The provided g vector is null. Setting g = 1")
+    g = ones(dim)
+  end
+
+  func_eval(x) = dot(g, x) + 0.5*dot(x, H*x)
+  grad_eval(x) = g + H*x
+
+  x0 = zeros(dim)
+  grad0 = grad_eval(x0)
+  grad0_norm = norm(grad0)
+
+  x = deepcopy(x0)
+  grad = deepcopy(grad0)
+  grad_norm = deepcopy(grad0_norm)
+
+  for k in 1:max_iter
+
+    d = -grad
+    
+    t = grad_norm^2/dot(d, H*d)
+    x .+= t .* d
+
+    grad .= grad_eval(x)
+    grad_norm = norm(grad)
+
+    @printf("|  k= %3d  |  grad_norm= %10.3e  |  f= %10.3e  |\n", k, grad_norm, func_eval(x))
+
+    if grad_norm <= eps_a + eps_r*grad0_norm
+      break
+    end
+  end
+
+  @printf("Final ||grad||= %10.3e\n", grad_norm)
+
+  return x
 end
 ```
 
@@ -75,8 +120,85 @@ Ici, on cherche notamment à valider le résultat disant que la méthode se term
 Tester votre implémentation sur les problèmes quadratiques de la section *Problèmes test* ci-dessous.
 
 ```{julia}
+"""
+  bfgs_qp(g, H, eps_a=1.0e-5, eps_r=1.0e-5)
+
+Find minima of quadratic convex function provided g vector and H matrix using the BFGS algorithm. Return the solution vector.
+"""
 function bfgs_qp(g, H, eps_a=1.0e-5, eps_r=1.0e-5)
-  # votre code ici
+  # source: https://link.springer.com/book/10.1007/978-0-387-40065-5
+
+  dim = length(g)
+
+  # For a quadratic and convex problem, BFGS should converge with at most dim iterations.
+  max_iter = dim
+
+  if norm(g) == 0
+    println("The provided g vector is null. Setting g = 1")
+    g = ones(dim)
+  end
+
+  func_eval(x) = dot(g, x) + 0.5*dot(x, H*x)
+  grad_eval(x) = g + H*x
+  
+  x0 = zeros(dim)
+  grad0 = grad_eval(x0)
+  grad0_norm = norm(grad0)
+
+  x = deepcopy(x0)
+  grad = deepcopy(grad0)
+  grad_norm = deepcopy(grad0_norm)
+
+  if grad0_norm == 0
+    throw("Vector g must be nonzero.")
+  end
+
+  Idim = I(dim)
+
+  Hk = deepcopy(Idim)
+  p = deepcopy(grad)
+  s = deepcopy(grad)
+  new_grad = deepcopy(grad)
+  y = deepcopy(grad)
+  
+  for k in 1:max_iter
+
+    p .= -Hk*grad
+
+    # Compute alpha with exact line search
+    alpha = -dot(grad, p)/dot(p, H*p)
+
+    s .= alpha.*p
+    x .+= s
+    
+    new_grad .= grad_eval(x)
+    y .= new_grad .- grad
+    
+    rho = 1/dot(y, s)
+    Hk = (Idim - rho*s*y')*Hk*(Idim - rho*y*s') + rho*s*s'
+    
+    grad .= new_grad
+    grad_norm = norm(grad)
+
+    @printf("|  k= %3d  |  grad_norm= %10.3e  |  f= %10.3e  |\n", k, grad_norm, func_eval(x))
+
+    if grad_norm <= eps_a + eps_r*grad0_norm
+      break
+    end
+  end
+
+  @printf("Final ||grad||= %10.3e\n", grad_norm)
+
+  # Compare Hk and H, they should be identical
+  if isapprox(inv(Hk), H, atol=eps_a, rtol=eps_r)
+    println("H = Hk within tolerance")
+  else
+    println("H != Hk within tolerance")
+  end
+  println("||inv(Hk) - H||/||H||= ", norm(inv(Hk)-H)/norm(H))
+
+  return x
+
 end
 ```
 
@@ -87,9 +209,21 @@ end
 Votre premier problème test sera généré aléatoirement avec $n = 10$.
 
 ```{julia}
+
 n = 10
-# g_rand = ...
-# H_rand = ...
+g = rand(n)
+H = rand(n, n)
+
+# Will not correctly converge if H is not postive definite
+println("--- STEEPEST ---")
+x_star = steepest_qp(g, H)
+println("x* = ", x_star)
+
+println("--- BFGS ---")
+x_star = bfgs_qp(g, H)
+println("x* = ", x_star)
+
+
 ```
 
 Utiliser ensuite les problèmes quadratiques convexes de la collection Maros et Meszaros.
@@ -110,6 +244,20 @@ function get_gH(name, reg=0)
   n = qpdata.nvar
   g = qpdata.c
   H = Symmetric(sparse(qpdata.qrows, qpdata.qcols, qpdata.qvals, n, n) + reg * I, :L)
+
+  # Verify the gradient vector is nonzero. If it is, replace it with vector of ones
+  if norm(g) == 0
+    dim = length(g)
+    g = ones(dim)
+    println("Gradient vector was corrected.")
+  end
+
+  try
+      cholesky(H)
+  catch e
+      @warn "H is not positive definite. Please add regularization term.", name
+  end
+
   return g, H
 end
 ```
@@ -127,7 +275,18 @@ Choisissez 3 problèmes :
 * un avec $n \approx 100$.
 
 ```{julia}
+# Selected problem for dim ~10
+g15, H15 = get_gH("HS118.SIF")
+
+# Selected problem for dim ~50
+g75, H75 = get_gH("DUAL4.SIF")
+
+# Selected problem for dim ~100
 g100, H100 = get_gH("CVXQP1_S.SIF")
+
+# Regularization term is added since H is note positive definite.
+g100, H100 = get_gH("CVXQP1_S.SIF", 2.2e-14)
+
 ```
 
 Attention :
@@ -142,11 +301,24 @@ g, H = get_gH(name, 1.0e-3)
 ## Validation de la méthode de la plus forte pente
 
 ```{julia}
-# votre code ici
+x_star11 = steepest_qp(g15, H15)
+x_star12 = steepest_qp(g75, H75)
+x_star13 = steepest_qp(g100, H100)
+
 ```
 
 ## Validation de la méthode BFGS
 
 ```{julia}
-# votre code ici
+x_star21 = bfgs_qp(g15, H15)
+x_star22 = bfgs_qp(g75, H75)
+x_star23 = bfgs_qp(g100, H100)
+
+# For large problem inv(Hk) does not exactly match H, but is quite similar.
+
+# Verify the norm between the solutions found for each problem
+println("Problem 1 delta= ", norm(x_star11 - x_star21)/norm(x_star21))
+println("Problem 2 delta= ", norm(x_star12 - x_star22)/norm(x_star22))
+println("Problem 3 delta= ", norm(x_star13 - x_star23)/norm(x_star23))
+
 ```
