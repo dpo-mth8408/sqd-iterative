@@ -2,8 +2,8 @@
 title: "Rapport de laboratoire 2"
 subtitle: "MTH8408"
 author:
-  - name: Votre nom
-    email: votre.adresse@polymtl.ca
+  - name: Yasmine Amami
+    email: yasmine.amami.adresse@polymtl.ca
     affiliation:
       - name: Polytechnique Montréal
 format:
@@ -28,6 +28,7 @@ engine: julia
 using Pkg
 Pkg.activate("labo2_env")
 using LinearAlgebra
+using Printf
 ```
 
 # Contexte
@@ -59,8 +60,63 @@ Votre implémentation doit avoir les caractéristiques suivantes :
 Tester votre implémentation sur les problèmes quadratiques de la section *Problèmes test* ci-dessous.
 
 ```{julia}
-function steepest_qp(g, H, eps_a=1.0e-5, eps_r=1.0e-5)
-  # votre code ici
+"""
+    steepest_qp(g, H, eps_a=1.0e-5, eps_r=1.0e-5)
+
+# Arguments
+- `g`: vecteur gradient (dimension n)
+- `H`: matrice symetrique positive definie (n×n)
+- `eps_a`: tolerance absolue pour la norme du gradient (par defaut: 1e-5)
+- `eps_r`: tolerance relative pour la norme du gradient (par defaut: 1e-5)
+
+# Retours
+- `x`: solution optimale
+- `iter`: nombre d'iterations
+- `converged`: true si converge, false si max iterations atteint
+"""
+function steepest_qp(g, H, eps_abs=1.0e-5, eps_rel=1.0e-5)
+    n = length(g)
+    max_iter = 2 * n
+    x = zeros(n)
+    history = []
+    x_exact = -H \ g
+
+    println("Iter\t\t||résidu relatif||\t||erreur relatif||")
+
+    for k in 1:max_iter
+        gradient = g + H * x
+        grad_norm = norm(gradient)
+
+        # Critère d'arrêt
+        if grad_norm ≤ eps_abs + eps_rel * norm(g)
+            break
+        end
+
+        # Direction de descente
+        direction = -gradient
+
+        # Produit unique H * direction
+        H_direction = H * direction
+
+        # Recherche linéaire exacte
+        alpha = dot(gradient, gradient) / dot(direction, H_direction)
+
+        # Mise à jour
+        x .+= alpha * direction
+
+        # Évaluation de la fonction
+        f_x = dot(g, x) + 0.5 * dot(x, H * x)
+
+        # Calcul de l'erreur
+        error = norm(x_exact - x)
+
+        println(@sprintf("%d\t\t\t%.3e\t\t%.3e", k, grad_norm, error))
+
+
+        # Historique
+        push!(history, (iteration=k, x=copy(x), grad_norm=grad_norm))
+    end
+    return x, history
 end
 ```
 
@@ -75,8 +131,78 @@ Ici, on cherche notamment à valider le résultat disant que la méthode se term
 Tester votre implémentation sur les problèmes quadratiques de la section *Problèmes test* ci-dessous.
 
 ```{julia}
-function bfgs_qp(g, H, eps_a=1.0e-5, eps_r=1.0e-5)
-  # votre code ici
+"""
+    bfgs_qp(g, H, eps_a=1.0e-5, eps_r=1.0e-5)
+
+# Arguments
+- `g`: vecteur gradient (dimension n)
+- `H`: matrice symetrique positive definie (n×n)
+- `eps_a`: tolerance absolue pour la norme du gradient (par defaut: 1e-5)
+- `eps_r`: tolerance relative pour la norme du gradient (par defaut: 1e-5)
+
+# Retours
+- `x`: solution optimale
+- `iter`: nombre d'iterations
+- `converged`: true si converge, false si max iterations atteint
+- `B`: approximation  BFGS 
+"""
+function bfgs_qp(g, H, eps_abs=1.0e-5, eps_rel=1.0e-5)
+    n = length(g)
+    max_iter = n
+    x = zeros(n)
+    B = Matrix(1.0I, n, n)  # Approximation initiale de H⁻¹
+    history = []
+    x_exact = -H \ g
+
+    gradient_prev = g + H * x
+
+    println("Iter\t\t||résidu relatif||\t||erreur relatif||")
+
+    for k in 1:max_iter
+        gradient = g + H * x
+        grad_norm = norm(gradient)
+
+        # Critère d'arrêt
+        if grad_norm ≤ eps_abs + eps_rel * norm(g)
+            break
+        end
+
+        # Direction de descente
+        direction = -B * gradient
+
+        # Produit unique H * direction
+        H_direction = H * direction
+
+        # Recherche linéaire exacte
+        alpha = -dot(gradient, direction) / dot(direction, H_direction)
+
+        # Mise à jour de x
+        step = alpha * direction
+        x .+= step
+
+        # Mise à jour du gradient
+        gradient_new = g + H * x
+        y = gradient_new - gradient
+
+        # Mise à jour BFGS
+        rho = 1.0 / dot(y, step)
+        I_n = I(n)
+        V = I_n .- rho .* step * y'
+        B .= V * B * V' .+ rho .* step * step'
+
+
+        f_x = dot(g, x) + 0.5 * dot(x, H * x)
+
+        # Calcul de l'erreur
+        error = norm(x_exact - x)
+
+        println(@sprintf("%d\t\t\t%.3e\t\t%.3e", k, grad_norm, error))
+
+        # Historique
+        push!(history, (iteration=k, x=copy(x), grad_norm=grad_norm))
+        gradient_prev .= gradient_new
+    end
+    return x, history
 end
 ```
 
@@ -88,8 +214,10 @@ Votre premier problème test sera généré aléatoirement avec $n = 10$.
 
 ```{julia}
 n = 10
-# g_rand = ...
-# H_rand = ...
+g_rand = ones(n)
+H_rand = randn(n, n)
+H = H_rand' * H_rand
+x, history = bfgs_qp(g_rand, H)
 ```
 
 Utiliser ensuite les problèmes quadratiques convexes de la collection Maros et Meszaros.
@@ -103,14 +231,14 @@ using Logging
 using SparseArrays
 
 function get_gH(name, reg=0)
-  mm_path = fetch_mm()  # chemin vers les problèmes sur votre disque
-  qpdata = with_logger(Logging.NullLogger()) do
-    readqps(joinpath(mm_path, name))
-  end
-  n = qpdata.nvar
-  g = qpdata.c
-  H = Symmetric(sparse(qpdata.qrows, qpdata.qcols, qpdata.qvals, n, n) + reg * I, :L)
-  return g, H
+    mm_path = fetch_mm()  # chemin vers les problèmes sur votre disque
+    qpdata = with_logger(Logging.NullLogger()) do
+        readqps(joinpath(mm_path, name))
+    end
+    n = qpdata.nvar
+    g = qpdata.c
+    H = Symmetric(sparse(qpdata.qrows, qpdata.qcols, qpdata.qvals, n, n) + reg * I, :L)
+    return g, H
 end
 ```
 
@@ -127,7 +255,9 @@ Choisissez 3 problèmes :
 * un avec $n \approx 100$.
 
 ```{julia}
-g100, H100 = get_gH("CVXQP1_S.SIF")
+g10, H10 = get_gH("DUALC1.SIF ", 1.0e-3)
+g50, H50 = get_gH("QCAPRI.SIF", 1.0e-3)
+g100, H100 = get_gH("QPILOTNO.SIF", 1.0e-3)
 ```
 
 Attention :
@@ -139,14 +269,19 @@ Attention :
 g, H = get_gH(name, 1.0e-3)
 ```
 
+
 ## Validation de la méthode de la plus forte pente
 
 ```{julia}
-# votre code ici
+steepest_qp(g10, H10)
+steepest_qp(g50, H50)
+steepest_qp(g100, H100)
 ```
 
 ## Validation de la méthode BFGS
 
 ```{julia}
-# votre code ici
+bfgs_qp(g10, H10)
+bfgs_qp(g50, H50)
+bfgs_qp(g100, H100)
 ```
