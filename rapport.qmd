@@ -205,7 +205,7 @@ function bfgs_qp(g, H, eps_a=1.0e-5, eps_r=1.0e-5)
       quadra += 0.5*alpha*beta
       # Norme de l'erreur
       nrmerror = norm(xstart - x)
-      println(@sprintf("%d\t\t\t%.3e\t\t\t\t%.3e\t\t\t\t%.3e", 
+      println(@sprintf("%d\t\t\t%.3e\t\t%.3e\t\t%.3e", 
     k, nrm/nrmg, nrmerror/nrmx, quadra))
 
     end
@@ -278,12 +278,12 @@ g, H = get_gH(name, 1.0e-3)
 ```
 
 ```{julia}
-g10, H10 = get_gH("ksip.SIF", 1.0e-3)
+g10, H10 = get_gH("KSIP.SIF", 1.0e-3)
 println(g10)
-g50, H50 = get_gH("qafiro.SIF", 1.0e-3)
+g50, H50 = get_gH("QAFIRO.SIF", 1.0e-3)
 println(g50)
 g50 = ones(length(g50))
-g100, H100 = get_gH("qadlittl.SIF", 1.0e-3)
+g100, H100 = get_gH("QADLITTL.SIF", 1.0e-3)
 println(g100)
 ```
 
