@@ -46,6 +46,7 @@ Votre implémentation doit avoir les caractéristiques suivantes :
 
 1. un critère d'arrêt absolu et relatif sur le gradient de l'objectif ;
 2. un critère d'arrêt portant sur le nombre d'itérations (le nombre maximum d'itérations devrait dépendre du nombre de variables $n$ du problème) ;
+2. toujours démarrer de l'approximation initiale $0$ ;
 3. allouer un minimum en utilisant les opérations vectorisées (`.=`, `.+`, `.+=`, etc.) autant que possible ;
 4. calculer *un seul* produit entre $H$ et un vecteur par itération ;
 5. n'utiliser $H$ qu'à travers des produits avec un vecteur (ne pas accéder aux éléments de $H$ ou indexer dans $H$) ;
