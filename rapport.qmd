@@ -116,7 +116,7 @@ end
 
 Les noms des problèmes sont listés sur [https://bitbucket.org/optrove/maros-meszaros/src/master/](https://bitbucket.org/optrove/maros-meszaros/src/master/).
 
-Leurs dimensions sont donnés dans le tableau sur la page [https://www.doc.ic.ac.uk/~im/00README.QP](https://www.doc.ic.ac.uk/%7Eim/00README.QP) (avec des noms qui ne correspondent pas tout à fait ; les noms corrects sont ceux de la page Bitbucket).
+Leurs dimensions sont données dans le tableau sur la page [https://www.doc.ic.ac.uk/~im/00README.QP](https://www.doc.ic.ac.uk/%7Eim/00README.QP) (avec des noms qui ne correspondent pas tout à fait ; les noms corrects sont ceux de la page Bitbucket).
 
 NB : ces problèmes ont des contraintes, mais dans ce laboratoire, on les ignore.
 
